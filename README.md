@@ -38,7 +38,7 @@ development concepts.
 ## getting started
 
 ``` bash
-git clone https://github.com/nksarps/pages
+git clone https://github.com/nksarps/pages.git
 cd pages
 
 python -m venv .venv
