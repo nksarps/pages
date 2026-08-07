@@ -1,6 +1,7 @@
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
 
@@ -191,3 +192,47 @@ class LoginTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('email', response.data['errors'])
+
+
+class RefreshTests(APITestCase):
+    def setUp(self):
+        self.url = reverse('token_refresh')
+        self.user = User.objects.create_user(
+            email='jane.doe@example.com',
+            password='Str0ng!Pass',
+            first_name='Jane',
+            last_name='Doe',
+            username='janedoe',
+            dob='1995-05-20',
+            phone_number='+15551234567',
+        )
+        self.refresh_token = str(RefreshToken.for_user(self.user))
+
+    def test_refresh_succeeds_with_valid_token(self):
+        response = self.client.post(self.url, {'refresh': self.refresh_token})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertNotEqual(response.data['refresh'], self.refresh_token)
+
+    def test_refresh_fails_when_reusing_a_rotated_token(self):
+        self.client.post(self.url, {'refresh': self.refresh_token})
+
+        response = self.client.post(self.url, {'refresh': self.refresh_token})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['message'], 'Token refresh failed')
+        self.assertIn('refresh', response.data['errors'])
+
+    def test_refresh_fails_with_invalid_token(self):
+        response = self.client.post(self.url, {'refresh': 'not-a-real-token'})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('refresh', response.data['errors'])
+
+    def test_refresh_fails_when_missing_token(self):
+        response = self.client.post(self.url, {})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('refresh', response.data['errors'])
