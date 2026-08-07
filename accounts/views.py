@@ -1,4 +1,4 @@
-from accounts.serializers import SignUpSerializer
+from accounts.serializers import SignUpSerializer, LoginSerializer
 
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
@@ -27,5 +27,24 @@ def sign_up(request):
         
         return Response({
             'message': 'User creation failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def login(request):
+    if request.method == 'POST':
+        serializer = LoginSerializer(data=request.data)
+
+        if serializer.is_valid():
+            tokens = serializer.validated_data
+
+            return Response({
+                'message': 'Login successful',
+                'tokens': tokens
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'message': 'Login failed',
             'errors': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)

@@ -111,3 +111,83 @@ class SignUpTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('password', response.data['errors'])
+
+
+class LoginTests(APITestCase):
+    def setUp(self):
+        self.url = reverse('login')
+        self.password = 'Str0ng!Pass'
+        self.user = User.objects.create_user(
+            email='jane.doe@example.com',
+            password=self.password,
+            first_name='Jane',
+            last_name='Doe',
+            username='janedoe',
+            dob='1995-05-20',
+            phone_number='+15551234567',
+        )
+
+    def test_login_succeeds_with_valid_credentials(self):
+        response = self.client.post(self.url, {
+            'email': self.user.email,
+            'password': self.password,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        tokens = response.data['tokens']
+        self.assertIn('access', tokens)
+        self.assertIn('refresh', tokens)
+        self.assertEqual(tokens['role'], self.user.role)
+
+    def test_login_fails_with_wrong_password(self):
+        response = self.client.post(self.url, {
+            'email': self.user.email,
+            'password': 'WrongPassword1!',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn('tokens', response.data)
+
+    def test_login_fails_for_inactive_user(self):
+        self.user.is_active = False
+        self.user.save()
+
+        response = self.client.post(self.url, {
+            'email': self.user.email,
+            'password': self.password,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn('tokens', response.data)
+
+    def test_login_fails_with_nonexistent_email(self):
+        response = self.client.post(self.url, {
+            'email': 'nobody@example.com',
+            'password': 'WhoKnows1!',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_login_error_does_not_reveal_whether_email_or_password_was_wrong(self):
+        wrong_password_response = self.client.post(self.url, {
+            'email': self.user.email,
+            'password': 'WrongPassword1!',
+        })
+        nonexistent_email_response = self.client.post(self.url, {
+            'email': 'nobody@example.com',
+            'password': 'WhoKnows1!',
+        })
+
+        self.assertEqual(wrong_password_response.data, nonexistent_email_response.data)
+
+    def test_login_fails_when_missing_password(self):
+        response = self.client.post(self.url, {'email': self.user.email})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('password', response.data['errors'])
+
+    def test_login_fails_when_missing_email(self):
+        response = self.client.post(self.url, {'password': self.password})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data['errors'])
