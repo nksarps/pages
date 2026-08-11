@@ -43,3 +43,14 @@ class LoginSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         data['role'] = self.user.role
         return data
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'username', 'email', 'dob', 'phone_number', 'role', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class UpdateUserStatusSerializer(serializers.Serializer):
+    is_active = serializers.BooleanField(required=True)
