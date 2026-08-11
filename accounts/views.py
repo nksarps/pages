@@ -1,8 +1,11 @@
-from accounts.serializers import SignUpSerializer, LoginSerializer
+from accounts.models import User
+from accounts.permissions import IsAdminRole
+from accounts.serializers import SignUpSerializer, LoginSerializer, UserSerializer, UpdateUserStatusSerializer
 
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -82,4 +85,48 @@ def refresh(request):
         return Response({
             'message': 'Token refresh failed',
             'errors': errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@swagger_auto_schema(
+    method='patch',
+    operation_summary='Update user status',
+    operation_description='Allows an admin to activate or deactivate a user account.',
+    request_body=UpdateUserStatusSerializer,
+    tags=['User Management'],
+)
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated, IsAdminRole])
+def update_user_status(request, user_id:str):
+    if request.method == 'PATCH':
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({
+                'status': False,
+                'message': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        if user.id == request.user.id:
+            return Response({
+                'status': False,
+                'message': 'You cannot update your own status'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = UpdateUserStatusSerializer(data=request.data)
+
+        if serializer.is_valid():
+            user.is_active = serializer.validated_data['is_active']
+            user.save()
+
+            return Response({
+                'status': True,
+                'message': 'User activated successfully' if user.is_active else 'User deactivated successfully',
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            'status': False,
+            'message': 'User update failed',
+            'errors': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)

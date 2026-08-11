@@ -1,3 +1,5 @@
+import uuid
+
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -236,3 +238,104 @@ class RefreshTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('refresh', response.data['errors'])
+
+
+class UpdateUserStatusTests(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            email='admin@example.com',
+            password='Str0ng!Pass',
+            first_name='Admin',
+            last_name='User',
+            username='adminuser',
+            dob='1990-01-01',
+            phone_number='+15550000001',
+            role='admin',
+        )
+        self.member = User.objects.create_user(
+            email='jane.doe@example.com',
+            password='Str0ng!Pass',
+            first_name='Jane',
+            last_name='Doe',
+            username='janedoe',
+            dob='1995-05-20',
+            phone_number='+15551234567',
+        )
+        self.url = reverse('update_user_status', args=[self.member.id])
+
+    def test_update_user_status_deactivates_user_as_admin(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.patch(self.url, {'is_active': False})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message'], 'User deactivated successfully')
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_active)
+
+    def test_update_user_status_reactivates_user_as_admin(self):
+        self.member.is_active = False
+        self.member.save()
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.patch(self.url, {'is_active': True})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message'], 'User activated successfully')
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_active)
+
+    def test_update_user_status_fails_for_non_admin(self):
+        self.client.force_authenticate(user=self.member)
+
+        response = self.client.patch(self.url, {'is_active': False})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data, {
+            'status': False,
+            'message': 'You do not have permission to perform this action.',
+        })
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_active)
+
+    def test_update_user_status_fails_when_targeting_self(self):
+        self.client.force_authenticate(user=self.admin)
+        own_url = reverse('update_user_status', args=[self.admin.id])
+
+        response = self.client.patch(own_url, {'is_active': False})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['message'], 'You cannot update your own status')
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+
+    def test_update_user_status_fails_when_unauthenticated(self):
+        response = self.client.patch(self.url, {'is_active': False})
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_user_status_fails_for_nonexistent_user(self):
+        self.client.force_authenticate(user=self.admin)
+        missing_url = reverse('update_user_status', args=[uuid.uuid4()])
+
+        response = self.client.patch(missing_url, {'is_active': False})
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_user_status_fails_with_invalid_payload(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.patch(self.url, {'is_active': 'not-a-boolean'})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('is_active', response.data['errors'])
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_active)
+
+    def test_update_user_status_fails_when_is_active_missing(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.patch(self.url, {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('is_active', response.data['errors'])
